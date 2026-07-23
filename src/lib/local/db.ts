@@ -3,8 +3,14 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { Database } from "@/lib/local/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR =
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+    ? path.join("/tmp", "banter-data")
+    : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "banter.json");
+
+/** Keep a process-local cache so warm Vercel instances stay consistent. */
+let memoryDb: Database | null = null;
 
 function seed(): Database {
   const now = new Date().toISOString();
@@ -41,6 +47,7 @@ function seed(): Database {
 let writeQueue: Promise<void> = Promise.resolve();
 
 async function ensureDb(): Promise<Database> {
+  if (memoryDb) return memoryDb;
   await fs.mkdir(DATA_DIR, { recursive: true });
   try {
     const raw = await fs.readFile(DB_PATH, "utf8");
@@ -67,10 +74,12 @@ async function ensureDb(): Promise<Database> {
     if (dirty) {
       await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
     }
+    memoryDb = db;
     return db;
   } catch {
     const fresh = seed();
     await fs.writeFile(DB_PATH, JSON.stringify(fresh, null, 2), "utf8");
+    memoryDb = fresh;
     return fresh;
   }
 }
@@ -86,6 +95,7 @@ export async function updateDb<T>(
   writeQueue = writeQueue.then(async () => {
     const db = await ensureDb();
     result = mutator(db);
+    memoryDb = db;
     await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
   });
   await writeQueue;
