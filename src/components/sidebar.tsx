@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Settings,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -234,6 +235,17 @@ export function Sidebar({
                 {unreadCount}
               </span>
             )}
+          </Link>
+          <Link
+            href="/app/settings"
+            onClick={() => onNavigate?.()}
+            title="Settings"
+            className={cn(
+              "rounded-md p-2 text-white/65 hover:bg-white/10 hover:text-white",
+              pathname === "/app/settings" && "bg-white/10 text-white",
+            )}
+          >
+            <Settings className="h-4 w-4" />
           </Link>
         </div>
         <div className="mb-2">

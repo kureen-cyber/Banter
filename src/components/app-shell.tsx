@@ -23,7 +23,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="relative flex h-screen overflow-hidden">
       <div
         className={`fixed inset-y-0 left-0 z-40 transition-transform md:static md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
@@ -47,7 +47,7 @@ export function AppShell({
         />
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col bg-[var(--panel)]">
+      <main className="relative z-10 flex min-w-0 flex-1 flex-col border-l border-[var(--border)] bg-[var(--panel)] shadow-[-12px_0_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
         <div className="flex h-12 items-center border-b border-[var(--border)] px-3 md:hidden">
           <button
             type="button"

@@ -1,19 +1,177 @@
 @import "tailwindcss";
 
-:root {
+/* Accent + fluid palettes per background theme */
+:root,
+[data-theme="harbor"] {
+  --accent: #0f766e;
+  --accent-soft-light: #ccfbf1;
+  --accent-soft-dark: rgba(45, 212, 191, 0.18);
+  --warn: #fbbf24;
+  --fluid-a: #5eead4;
+  --fluid-b: #93c5fd;
+  --fluid-c: #a7f3d0;
+  --fluid-base-light: #e8eef6;
+  --fluid-base-dark: #0b1220;
+  --code-glyph-light: rgba(15, 118, 110, 0.14);
+  --code-glyph-dark: rgba(94, 234, 212, 0.16);
+  --grid-line-light: rgba(21, 34, 56, 0.05);
+  --grid-line-dark: rgba(148, 163, 184, 0.08);
+  --sidebar-light: #152238;
+  --sidebar-elevated-light: #1c2d4a;
+  --sidebar-light-fg: #e8eef7;
+  --sidebar-dark: #060b14;
+  --sidebar-elevated-dark: #101826;
+  --sidebar-dark-fg: #e8eef7;
+}
+
+[data-theme="syntax-aurora"] {
+  --accent: #0891b2;
+  --accent-soft-light: #cffafe;
+  --accent-soft-dark: rgba(34, 211, 238, 0.16);
+  --warn: #a3e635;
+  --fluid-a: #22d3ee;
+  --fluid-b: #a3e635;
+  --fluid-c: #67e8f9;
+  --fluid-base-light: #d9f4fb;
+  --fluid-base-dark: #07151c;
+  --code-glyph-light: rgba(8, 145, 178, 0.16);
+  --code-glyph-dark: rgba(103, 232, 249, 0.18);
+  --grid-line-light: rgba(8, 145, 178, 0.07);
+  --grid-line-dark: rgba(103, 232, 249, 0.08);
+  --sidebar-light: #0b1c2c;
+  --sidebar-elevated-light: #123047;
+  --sidebar-light-fg: #e0f2fe;
+  --sidebar-dark: #041018;
+  --sidebar-elevated-dark: #0b1c2c;
+  --sidebar-dark-fg: #e0f2fe;
+}
+
+[data-theme="terminal-night"] {
+  --accent: #22c55e;
+  --accent-soft-light: #dcfce7;
+  --accent-soft-dark: rgba(34, 197, 94, 0.18);
+  --warn: #f59e0b;
+  --fluid-a: #16a34a;
+  --fluid-b: #f59e0b;
+  --fluid-c: #22d3ee;
+  --fluid-base-light: #ecfdf5;
+  --fluid-base-dark: #0b1220;
+  --code-glyph-light: rgba(22, 163, 74, 0.16);
+  --code-glyph-dark: rgba(34, 197, 94, 0.18);
+  --grid-line-light: rgba(22, 163, 74, 0.07);
+  --grid-line-dark: rgba(34, 197, 94, 0.08);
+  --sidebar-light: #14532d;
+  --sidebar-elevated-light: #166534;
+  --sidebar-light-fg: #dcfce7;
+  --sidebar-dark: #060b14;
+  --sidebar-elevated-dark: #101826;
+  --sidebar-dark-fg: #d1fae5;
+}
+
+[data-theme="coral-compile"] {
+  --accent: #e11d48;
+  --accent-soft-light: #ffe4e6;
+  --accent-soft-dark: rgba(251, 113, 133, 0.18);
+  --warn: #fb923c;
+  --fluid-a: #fb7185;
+  --fluid-b: #fdba74;
+  --fluid-c: #fda4af;
+  --fluid-base-light: #fff1eb;
+  --fluid-base-dark: #1a0f12;
+  --code-glyph-light: rgba(225, 29, 72, 0.14);
+  --code-glyph-dark: rgba(251, 113, 133, 0.18);
+  --grid-line-light: rgba(225, 29, 72, 0.06);
+  --grid-line-dark: rgba(251, 113, 133, 0.08);
+  --sidebar-light: #2a1a1f;
+  --sidebar-elevated-light: #3b242c;
+  --sidebar-light-fg: #ffe4e6;
+  --sidebar-dark: #140a0d;
+  --sidebar-elevated-dark: #241318;
+  --sidebar-dark-fg: #ffe4e6;
+}
+
+[data-theme="ocean-diff"] {
+  --accent: #0284c7;
+  --accent-soft-light: #e0f2fe;
+  --accent-soft-dark: rgba(56, 189, 248, 0.16);
+  --warn: #34d399;
+  --fluid-a: #38bdf8;
+  --fluid-b: #34d399;
+  --fluid-c: #7dd3fc;
+  --fluid-base-light: #e0f2fe;
+  --fluid-base-dark: #071520;
+  --code-glyph-light: rgba(2, 132, 199, 0.15);
+  --code-glyph-dark: rgba(125, 211, 252, 0.16);
+  --grid-line-light: rgba(2, 132, 199, 0.07);
+  --grid-line-dark: rgba(56, 189, 248, 0.08);
+  --sidebar-light: #082f49;
+  --sidebar-elevated-light: #0c4a6e;
+  --sidebar-light-fg: #e0f2fe;
+  --sidebar-dark: #04101a;
+  --sidebar-elevated-dark: #0a2233;
+  --sidebar-dark-fg: #e0f2fe;
+}
+
+[data-theme="neon-commit"] {
+  --accent: #2dd4bf;
+  --accent-soft-light: #ccfbf1;
+  --accent-soft-dark: rgba(45, 212, 191, 0.16);
+  --warn: #f472b6;
+  --fluid-a: #2dd4bf;
+  --fluid-b: #f472b6;
+  --fluid-c: #818cf8;
+  --fluid-base-light: #ecfeff;
+  --fluid-base-dark: #111827;
+  --code-glyph-light: rgba(13, 148, 136, 0.14);
+  --code-glyph-dark: rgba(45, 212, 191, 0.16);
+  --grid-line-light: rgba(13, 148, 136, 0.07);
+  --grid-line-dark: rgba(148, 163, 184, 0.1);
+  --sidebar-light: #134e4a;
+  --sidebar-elevated-light: #115e59;
+  --sidebar-light-fg: #ecfeff;
+  --sidebar-dark: #030712;
+  --sidebar-elevated-dark: #111827;
+  --sidebar-dark-fg: #ecfeff;
+}
+
+/* Light / dark chrome */
+:root,
+[data-mode="light"] {
   --ink: #152238;
   --muted: #64748b;
-  --surface: #eef2f7;
-  --panel: #ffffff;
-  --border: #d8e0ea;
-  --accent: #0f766e;
-  --accent-soft: #ccfbf1;
-  --warn: #fbbf24;
-  --sidebar: #152238;
-  --sidebar-elevated: #1c2d4a;
-  --sidebar-fg: #e8eef7;
+  --surface: #f1f5f9;
+  --panel: rgba(255, 255, 255, 0.84);
+  --border: #d0dae8;
+  --accent-soft: var(--accent-soft-light);
+  --sidebar: var(--sidebar-light);
+  --sidebar-elevated: var(--sidebar-elevated-light);
+  --sidebar-fg: var(--sidebar-light-fg);
+  --fluid-base: var(--fluid-base-light);
+  --code-glyph: var(--code-glyph-light);
+  --grid-line: var(--grid-line-light);
   --background: var(--surface);
   --foreground: var(--ink);
+  --fluid-blend: multiply;
+  --fluid-opacity: 0.55;
+}
+
+[data-mode="dark"] {
+  --ink: #e2e8f0;
+  --muted: #94a3b8;
+  --surface: #0f172a;
+  --panel: rgba(15, 23, 42, 0.78);
+  --border: #243044;
+  --accent-soft: var(--accent-soft-dark);
+  --sidebar: var(--sidebar-dark);
+  --sidebar-elevated: var(--sidebar-elevated-dark);
+  --sidebar-fg: var(--sidebar-dark-fg);
+  --fluid-base: var(--fluid-base-dark);
+  --code-glyph: var(--code-glyph-dark);
+  --grid-line: var(--grid-line-dark);
+  --background: var(--surface);
+  --foreground: var(--ink);
+  --fluid-blend: screen;
+  --fluid-opacity: 0.35;
 }
 
 @theme inline {
@@ -24,15 +182,116 @@
 }
 
 body {
-  background:
-    radial-gradient(1200px 500px at 10% -10%, #d8f3ef 0%, transparent 55%),
-    radial-gradient(900px 400px at 100% 0%, #dbe7f5 0%, transparent 50%),
-    var(--surface);
+  background: var(--fluid-base);
   color: var(--ink);
   font-family: var(--font-body), system-ui, sans-serif;
+  min-height: 100%;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #c5d0de transparent;
+  scrollbar-color: color-mix(in oklab, var(--muted) 55%, transparent) transparent;
+}
+
+.banter-fluid {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: var(--fluid-opacity);
+  mix-blend-mode: var(--fluid-blend);
+  will-change: transform;
+}
+
+.banter-fluid-a {
+  width: 48vw;
+  height: 48vw;
+  max-width: 640px;
+  max-height: 640px;
+  left: -8%;
+  top: -12%;
+  background: var(--fluid-a);
+  animation: banter-drift-a 18s ease-in-out infinite alternate;
+}
+
+.banter-fluid-b {
+  width: 42vw;
+  height: 42vw;
+  max-width: 560px;
+  max-height: 560px;
+  right: -10%;
+  top: 18%;
+  background: var(--fluid-b);
+  animation: banter-drift-b 22s ease-in-out infinite alternate;
+}
+
+.banter-fluid-c {
+  width: 36vw;
+  height: 36vw;
+  max-width: 480px;
+  max-height: 480px;
+  left: 28%;
+  bottom: -14%;
+  background: var(--fluid-c);
+  animation: banter-drift-c 26s ease-in-out infinite alternate;
+}
+
+.banter-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+  opacity: 0.9;
+}
+
+.banter-code-layer {
+  position: absolute;
+  inset: 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+.banter-code-line {
+  position: absolute;
+  color: var(--code-glyph);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  animation: banter-code-float 14s ease-in-out infinite;
+  user-select: none;
+}
+
+.banter-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes banter-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(8%, 12%, 0) scale(1.12); }
+}
+
+@keyframes banter-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.05); }
+  to { transform: translate3d(-10%, 8%, 0) scale(0.92); }
+}
+
+@keyframes banter-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(0.95); }
+  to { transform: translate3d(6%, -10%, 0) scale(1.1); }
+}
+
+@keyframes banter-code-float {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-10px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banter-fluid,
+  .banter-code-line {
+    animation: none !important;
+  }
 }

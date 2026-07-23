@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Fraunces, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
+import { AmbientBackground } from "@/components/ambient-background";
 import "./globals.css";
 
 const body = Plus_Jakarta_Sans({
@@ -31,9 +33,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="harbor"
+      data-mode="light"
       className={`${body.variable} ${display.variable} ${mono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full">{children}</body>
+      <body className="relative min-h-full">
+        <ThemeProvider>
+          <AmbientBackground />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
