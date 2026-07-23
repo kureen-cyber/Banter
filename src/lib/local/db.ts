@@ -1,13 +1,31 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
 import type { Database } from "@/lib/local/types";
 
 const BLOB_PATH = "banter/banter.json";
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const LOCAL_DB_PATH = path.join(LOCAL_DATA_DIR, "banter.json");
-const WRITE_RETRIES = 5;
+const WRITE_RETRIES = 12;
+
+function isConcurrentBlobError(err: unknown): boolean {
+  return (
+    err instanceof BlobPreconditionFailedError ||
+    /precondition|ifmatch|412|etag|conflict|concurrent/i.test(
+      err instanceof Error ? err.message : String(err),
+    )
+  );
+}
+
+async function latestBlobEtag(): Promise<string | null> {
+  try {
+    const meta = await head(BLOB_PATH);
+    return meta?.etag ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** Process-local cache (warm instances). Blob is the source of truth in production. */
 let memoryDb: Database | null = null;
@@ -120,7 +138,7 @@ async function loadFromBlob(): Promise<{ db: Database; etag: string | null }> {
     });
     return { db, etag: written.etag };
   } catch (err) {
-    if (!(err instanceof BlobPreconditionFailedError)) throw err;
+    if (!isConcurrentBlobError(err)) throw err;
     // Someone else already wrote — use their version.
     return loadFromBlob();
   }
@@ -160,12 +178,13 @@ async function ensureDb(): Promise<Database> {
 
 async function persistBlob(db: Database, etag: string | null) {
   const payload = JSON.stringify(db, null, 2);
+  const match = (await latestBlobEtag()) ?? etag;
   const written = await put(BLOB_PATH, payload, {
     access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
-    ...(etag ? { ifMatch: etag } : {}),
+    ...(match ? { ifMatch: match } : {}),
   });
   memoryDb = db;
   memoryEtag = written.etag;
@@ -212,14 +231,10 @@ export async function updateDb<T>(mutator: (db: Database) => T): Promise<T> {
         return;
       } catch (err) {
         lastError = err;
-        const concurrent =
-          err instanceof BlobPreconditionFailedError ||
-          /precondition|ifmatch|412|etag|conflict|concurrent/i.test(
-            err instanceof Error ? err.message : String(err),
-          );
-        if (concurrent && attempt < WRITE_RETRIES - 1) {
+        if (isConcurrentBlobError(err) && attempt < WRITE_RETRIES - 1) {
           memoryDb = null;
           memoryEtag = null;
+          await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
           continue;
         }
         throw err;
