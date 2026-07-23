@@ -43,8 +43,8 @@ https://banter.example/auth/pm?idToken=FIREBASE_ID_TOKEN&github=optionalHandle
 ## Stack
 
 - Next.js (App Router) + TypeScript + Tailwind CSS
-- Local JSON database (`data/banter.json`)
-- Cookie sessions (JWT)
+- JSON data store — `data/banter.json` locally; **Vercel Blob** in production (so accounts survive logout/cold starts)
+- Cookie sessions (JWT), with `/api/auth/session-reset` for safe cookie clears on Vercel
 
 ## Run locally
 
