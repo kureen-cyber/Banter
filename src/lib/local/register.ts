@@ -21,14 +21,14 @@ export async function registerUser(input: {
   const now = new Date().toISOString();
   const id = newId();
 
-  const profile = await updateDb((db) => {
+  const user = await updateDb((db) => {
     if (db.users.some((u) => u.email === email)) {
       throw new Error("An account with that email already exists.");
     }
     if (github && db.users.some((u) => u.github_handle === github)) {
       throw new Error(`GitHub @${github} is already linked to another account.`);
     }
-    const user = {
+    const row = {
       id,
       email,
       display_name:
@@ -42,10 +42,10 @@ export async function registerUser(input: {
       last_seen_at: now,
       created_at: now,
     };
-    db.users.push(user);
-    return toProfile(user);
+    db.users.push(row);
+    return row;
   });
 
-  await setSessionCookie(profile.id);
-  return profile;
+  await setSessionCookie(user);
+  return toProfile(user);
 }

@@ -14,16 +14,17 @@ let memoryDb: Database | null = null;
 
 function seed(): Database {
   const now = new Date().toISOString();
+  // Stable IDs so every serverless instance seeds the same channel set.
   const channels = [
-    ["general", "General", "Cohort-wide conversation"],
-    ["announcements", "Announcements", "Official updates"],
-    ["project-1", "Project 1", "Project 1 coordination"],
-    ["backend-help", "Backend Help", "Backend questions and support"],
-    ["ai-discussions", "AI Discussions", "AI topics and experiments"],
-    ["career", "Career", "Jobs, networking, advice"],
-    ["random", "Random", "Off-topic banter"],
-  ].map(([slug, name, description]) => ({
-    id: randomUUID(),
+    ["11111111-1111-4111-8111-111111111101", "general", "General", "Cohort-wide conversation"],
+    ["11111111-1111-4111-8111-111111111102", "announcements", "Announcements", "Official updates"],
+    ["11111111-1111-4111-8111-111111111103", "project-1", "Project 1", "Project 1 coordination"],
+    ["11111111-1111-4111-8111-111111111104", "backend-help", "Backend Help", "Backend questions and support"],
+    ["11111111-1111-4111-8111-111111111105", "ai-discussions", "AI Discussions", "AI topics and experiments"],
+    ["11111111-1111-4111-8111-111111111106", "career", "Career", "Jobs, networking, advice"],
+    ["11111111-1111-4111-8111-111111111107", "random", "Random", "Off-topic banter"],
+  ].map(([id, slug, name, description]) => ({
+    id,
     slug,
     name,
     description,

@@ -6,7 +6,6 @@ import {
   getUnreadCount,
   requireUser,
 } from "@/lib/data";
-import { clearSessionCookie } from "@/lib/local/auth";
 import { touchPresence } from "@/lib/local/queries";
 
 export default async function AppLayout({
@@ -16,9 +15,8 @@ export default async function AppLayout({
 }) {
   const { user, profile } = await requireUser();
   if (!user || !profile) {
-    // Break redirect loops from stale JWTs (cookie valid, user gone from DB)
-    await clearSessionCookie();
-    redirect("/login");
+    // Must not mutate cookies in a Server Component — use a Route Handler.
+    redirect("/api/auth/session-reset");
   }
 
   const [channels, conversations, unread] = await Promise.all([

@@ -27,8 +27,8 @@ export async function upsertUserFromFirebase(
 
   const now = new Date().toISOString();
 
-  const profile = await updateDb((db) => {
-    let user =
+  const user = await updateDb((db) => {
+    let row =
       db.users.find((u) => u.firebase_uid === identity.firebaseUid) ||
       (github
         ? db.users.find(
@@ -37,7 +37,7 @@ export async function upsertUserFromFirebase(
         : undefined) ||
       (email ? db.users.find((u) => u.email === email) : undefined);
 
-    if (!user) {
+    if (!row) {
       if (
         github &&
         db.users.some((u) => u.github_handle === github)
@@ -46,7 +46,7 @@ export async function upsertUserFromFirebase(
           `GitHub @${github} is already linked to another Banter account.`,
         );
       }
-      user = {
+      row = {
         id: newId(),
         email: email || `${identity.firebaseUid}@firebase.local`,
         display_name:
@@ -60,37 +60,37 @@ export async function upsertUserFromFirebase(
         last_seen_at: now,
         created_at: now,
       };
-      db.users.push(user);
+      db.users.push(row);
     } else {
       if (
         github &&
         db.users.some(
-          (u) => u.id !== user!.id && u.github_handle === github,
+          (u) => u.id !== row!.id && u.github_handle === github,
         )
       ) {
         throw new Error(
           `GitHub @${github} is already linked to another Banter account.`,
         );
       }
-      user.firebase_uid = identity.firebaseUid;
-      if (github) user.github_handle = github;
-      if (identity.photoUrl) user.avatar_url = identity.photoUrl;
-      if (identity.displayName && user.display_name === user.email.split("@")[0]) {
-        user.display_name = identity.displayName;
+      row.firebase_uid = identity.firebaseUid;
+      if (github) row.github_handle = github;
+      if (identity.photoUrl) row.avatar_url = identity.photoUrl;
+      if (identity.displayName && row.display_name === row.email.split("@")[0]) {
+        row.display_name = identity.displayName;
       }
-      if (email && user.email.endsWith("@firebase.local")) {
-        user.email = email;
+      if (email && row.email.endsWith("@firebase.local")) {
+        row.email = email;
       }
-      withProvider(user, "firebase");
-      user.status = "online";
-      user.last_seen_at = now;
+      withProvider(row, "firebase");
+      row.status = "online";
+      row.last_seen_at = now;
     }
 
-    return toProfile(user);
+    return row;
   });
 
-  await setSessionCookie(profile.id);
-  return profile;
+  await setSessionCookie(user);
+  return toProfile(user);
 }
 
 export async function linkGithubHandle(

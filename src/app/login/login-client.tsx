@@ -28,7 +28,9 @@ export default function LoginPage() {
       ? "PM handoff failed. Sign in below."
       : errorParam === "missing_pm_token"
         ? "Missing PM token. Sign in below."
-        : null,
+        : errorParam === "session_reset"
+          ? "Your session expired. Please sign in again."
+          : null,
   );
   const [loading, setLoading] = useState(false);
 
