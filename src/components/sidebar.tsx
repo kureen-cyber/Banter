@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Channel, Conversation, Profile } from "@/lib/types";
+import type { MessageSearchHit } from "@/lib/local/queries";
 import { Avatar } from "@/components/avatar";
 import { AccountLinks } from "@/components/account-links";
 
@@ -25,6 +26,8 @@ type Props = {
   unreadCount: number;
   onNavigate?: () => void;
 };
+
+type SearchMode = "people" | "messages";
 
 export function Sidebar({
   profile,
@@ -37,25 +40,43 @@ export function Sidebar({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [people, setPeople] = useState<Profile[]>([]);
+  const [messageHits, setMessageHits] = useState<MessageSearchHit[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("people");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (query.trim().length < 1) {
+      const q = query.trim();
+      if (q.length < 1) {
         setPeople([]);
+        setMessageHits([]);
         return;
       }
-      const res = await fetch(`/api/users?q=${encodeURIComponent(query.trim())}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as { users: Profile[] };
-      if (!cancelled) setPeople(data.users);
+      if (searchMode === "people") {
+        const res = await fetch(`/api/users?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { users: Profile[] };
+        if (!cancelled) setPeople(data.users);
+      } else {
+        if (q.length < 2) {
+          if (!cancelled) setMessageHits([]);
+          return;
+        }
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { messages: MessageSearchHit[] };
+        if (!cancelled) setMessageHits(data.messages);
+      }
     }
     void load();
     return () => {
       cancelled = true;
     };
-  }, [query]);
+  }, [query, searchMode]);
 
   async function startDm(other: Profile) {
     const res = await fetch("/api/users", {
@@ -70,6 +91,28 @@ export function Sidebar({
     setQuery("");
     onNavigate?.();
     router.refresh();
+  }
+
+  async function createChannel() {
+    const name = newChannelName.trim();
+    if (name.length < 2 || creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { channel: Channel };
+      setCreateOpen(false);
+      setNewChannelName("");
+      onNavigate?.();
+      router.push(`/app/channels/${data.channel.id}`);
+      router.refresh();
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function signOut() {
@@ -94,33 +137,98 @@ export function Sidebar({
           className="flex w-full items-center gap-2 rounded-lg bg-white/8 px-3 py-2 text-sm text-white/70 transition hover:bg-white/12"
         >
           <Search className="h-4 w-4" />
-          Find people or start a DM
+          Search people or messages
         </button>
         {searchOpen && (
           <div className="mt-2 rounded-lg border border-white/10 bg-[var(--sidebar-elevated)] p-2">
+            <div className="mb-2 flex gap-1 rounded-md bg-black/20 p-0.5">
+              {(
+                [
+                  ["people", "People"],
+                  ["messages", "Messages"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setSearchMode(mode)}
+                  className={cn(
+                    "flex-1 rounded px-2 py-1 text-[11px] font-medium transition",
+                    searchMode === mode
+                      ? "bg-white/15 text-white"
+                      : "text-white/50 hover:text-white/80",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search classmates…"
+              placeholder={
+                searchMode === "people"
+                  ? "Search classmates…"
+                  : "Search message text…"
+              }
               className="w-full rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-sm text-white outline-none placeholder:text-white/40"
               autoFocus
             />
-            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-              {people.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => void startDm(p)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/10"
-                  >
-                    <Avatar profile={p} size="sm" showStatus />
-                    <span>{p.display_name}</span>
-                  </button>
-                </li>
-              ))}
-              {query && people.length === 0 && (
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+              {searchMode === "people" &&
+                people.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => void startDm(p)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/10"
+                    >
+                      <Avatar profile={p} size="sm" showStatus />
+                      <span>{p.display_name}</span>
+                    </button>
+                  </li>
+                ))}
+              {searchMode === "people" && query && people.length === 0 && (
                 <li className="px-2 py-1 text-xs text-white/45">No matches</li>
               )}
+              {searchMode === "messages" &&
+                messageHits.map((m) => (
+                  <li key={m.id}>
+                    <Link
+                      href={m.link}
+                      onClick={() => {
+                        setSearchOpen(false);
+                        setQuery("");
+                        onNavigate?.();
+                      }}
+                      className="block rounded-md px-2 py-1.5 hover:bg-white/10"
+                    >
+                      <p className="truncate text-xs text-white/45">
+                        {m.channel
+                          ? `#${m.channel.name}`
+                          : "Direct message"}{" "}
+                        · {m.sender?.display_name ?? "Unknown"}
+                      </p>
+                      <p className="line-clamp-2 text-sm text-white/90">
+                        {m.body}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              {searchMode === "messages" &&
+                query.trim().length >= 2 &&
+                messageHits.length === 0 && (
+                  <li className="px-2 py-1 text-xs text-white/45">
+                    No messages found
+                  </li>
+                )}
+              {searchMode === "messages" &&
+                query.trim().length > 0 &&
+                query.trim().length < 2 && (
+                  <li className="px-2 py-1 text-xs text-white/45">
+                    Type at least 2 characters
+                  </li>
+                )}
             </ul>
           </div>
         )}
@@ -151,8 +259,37 @@ export function Sidebar({
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
               Channels
             </h2>
-            <Plus className="h-3.5 w-3.5 text-white/35" />
+            <button
+              type="button"
+              onClick={() => setCreateOpen((v) => !v)}
+              className="rounded p-0.5 text-white/35 hover:bg-white/10 hover:text-white/80"
+              title="Create channel"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           </div>
+          {createOpen && (
+            <div className="mb-2 rounded-lg border border-white/10 bg-[var(--sidebar-elevated)] p-2">
+              <input
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void createChannel();
+                }}
+                placeholder="New channel name"
+                className="w-full rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-sm text-white outline-none placeholder:text-white/40"
+                autoFocus
+              />
+              <button
+                type="button"
+                disabled={creating || newChannelName.trim().length < 2}
+                onClick={() => void createChannel()}
+                className="mt-2 w-full rounded-md bg-[var(--accent)] px-2 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              >
+                Create
+              </button>
+            </div>
+          )}
           <ul className="space-y-0.5">
             {channels.map((ch) => {
               const href = `/app/channels/${ch.id}`;

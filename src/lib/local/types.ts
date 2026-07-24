@@ -35,6 +35,8 @@ export type Channel = {
   is_private: boolean;
   created_by: string | null;
   created_at: string;
+  /** Soft-delete / hide from sidebar when set. */
+  archived_at: string | null;
 };
 
 export type ChannelMember = {

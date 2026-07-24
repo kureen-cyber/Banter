@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
-import { MessageSquareText, Send, X } from "lucide-react";
+import {
+  Archive,
+  MessageSquareText,
+  Pencil,
+  Send,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/lib/types";
 import type { MessageWithSender } from "@/lib/local/queries";
@@ -17,21 +24,29 @@ type Props = {
   title: string;
   subtitle?: string;
   initialMessages: ChatMessage[];
+  canPost?: boolean;
+  canManageChannel?: boolean;
+  channelSlug?: string;
 };
 
 export function ChatPane({
-  currentUser,
   channelId,
   conversationId,
   title,
   subtitle,
   initialMessages,
+  canPost = true,
+  canManageChannel = false,
+  channelSlug,
 }: Props) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [body, setBody] = useState("");
   const [threadBody, setThreadBody] = useState("");
   const [threadRoot, setThreadRoot] = useState<ChatMessage | null>(null);
   const [threadReplies, setThreadReplies] = useState<ChatMessage[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [allowPost, setAllowPost] = useState(canPost);
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -40,10 +55,13 @@ export function ChatPane({
     : `/api/dm/${conversationId}/messages`;
 
   const topLevel = messages.filter((m) => !m.parent_id);
+  const reserved =
+    channelSlug === "announcements" || channelSlug === "general";
 
   useEffect(() => {
     setMessages(initialMessages);
-  }, [initialMessages]);
+    setAllowPost(canPost);
+  }, [initialMessages, canPost]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,8 +71,12 @@ export function ChatPane({
     const id = window.setInterval(async () => {
       const res = await fetch(endpoint);
       if (!res.ok) return;
-      const data = (await res.json()) as { messages: ChatMessage[] };
+      const data = (await res.json()) as {
+        messages: ChatMessage[];
+        canPost?: boolean;
+      };
       setMessages(data.messages);
+      if (typeof data.canPost === "boolean") setAllowPost(data.canPost);
       if (threadRoot) {
         setThreadReplies(
           data.messages.filter((m) => m.parent_id === threadRoot.id),
@@ -71,15 +93,22 @@ export function ChatPane({
 
   function sendMessage(parentId?: string | null) {
     const text = (parentId ? threadBody : body).trim();
-    if (!text) return;
+    if (!text || !allowPost) return;
 
     startTransition(async () => {
+      setError(null);
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text, parentId: parentId ?? null }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setError(data?.error ?? "Could not send message.");
+        return;
+      }
       const data = (await res.json()) as { message: ChatMessage };
       setMessages((prev) =>
         prev.some((m) => m.id === data.message.id)
@@ -99,6 +128,42 @@ export function ChatPane({
     });
   }
 
+  async function renameChannel() {
+    if (!channelId || !canManageChannel) return;
+    const next = window.prompt("Rename channel", title.replace(/^#\s*/, ""));
+    if (!next?.trim()) return;
+    const res = await fetch(`/api/channels/${channelId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: next.trim() }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setError(data?.error ?? "Rename failed.");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function archiveThisChannel() {
+    if (!channelId || !canManageChannel || reserved) return;
+    if (!window.confirm("Archive this channel? It will leave the sidebar.")) {
+      return;
+    }
+    const res = await fetch(`/api/channels/${channelId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setError(data?.error ?? "Archive failed.");
+      return;
+    }
+    router.push("/app");
+    router.refresh();
+  }
+
   function replyCount(id: string) {
     return messages.filter((m) => m.parent_id === id).length;
   }
@@ -106,15 +171,37 @@ export function ChatPane({
   return (
     <div className="relative flex min-h-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-[var(--border)] bg-[var(--panel)] px-5">
-          <div>
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--panel)] px-5">
+          <div className="min-w-0">
             <h1 className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
               {title}
             </h1>
             {subtitle && (
-              <p className="text-xs text-[var(--muted)]">{subtitle}</p>
+              <p className="truncate text-xs text-[var(--muted)]">{subtitle}</p>
             )}
           </div>
+          {canManageChannel && channelId && (
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void renameChannel()}
+                className="rounded-md p-2 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                title="Rename channel"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              {!reserved && (
+                <button
+                  type="button"
+                  onClick={() => void archiveThisChannel()}
+                  className="rounded-md p-2 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                  title="Archive channel"
+                >
+                  <Archive className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="flex-1 space-y-1 overflow-y-auto px-5 py-4">
@@ -135,13 +222,23 @@ export function ChatPane({
           <div ref={bottomRef} />
         </div>
 
-        <Composer
-          body={body}
-          setBody={setBody}
-          pending={pending}
-          onSend={() => sendMessage(null)}
-          placeholder={`Message ${title}`}
-        />
+        {error && (
+          <p className="px-5 pb-1 text-xs text-[var(--warn)]">{error}</p>
+        )}
+
+        {allowPost ? (
+          <Composer
+            body={body}
+            setBody={setBody}
+            pending={pending}
+            onSend={() => sendMessage(null)}
+            placeholder={`Message ${title}`}
+          />
+        ) : (
+          <div className="shrink-0 border-t border-[var(--border)] bg-[var(--panel)] px-5 py-4 text-sm text-[var(--muted)]">
+            Only channel admins can post in #announcements.
+          </div>
+        )}
       </section>
 
       {threadRoot && (
@@ -169,13 +266,19 @@ export function ChatPane({
               <MessageRow key={m.id} message={m} />
             ))}
           </div>
-          <Composer
-            body={threadBody}
-            setBody={setThreadBody}
-            pending={pending}
-            onSend={() => sendMessage(threadRoot.id)}
-            placeholder="Reply in thread"
-          />
+          {allowPost ? (
+            <Composer
+              body={threadBody}
+              setBody={setThreadBody}
+              pending={pending}
+              onSend={() => sendMessage(threadRoot.id)}
+              placeholder="Reply in thread"
+            />
+          ) : (
+            <div className="border-t border-[var(--border)] px-4 py-3 text-xs text-[var(--muted)]">
+              Read-only for your role.
+            </div>
+          )}
         </aside>
       )}
     </div>

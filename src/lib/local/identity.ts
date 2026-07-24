@@ -2,6 +2,7 @@ import { setSessionCookie } from "@/lib/local/auth";
 import { newId, toProfile, updateDb } from "@/lib/local/db";
 import { normalizeGithubHandle } from "@/lib/github";
 import type { FirebaseIdentity } from "@/lib/firebase/verify";
+import { ensureAnnouncementsOwner } from "@/lib/local/queries";
 import type { AuthProvider, Profile, UserRecord } from "@/lib/local/types";
 
 function withProvider(user: UserRecord, provider: AuthProvider) {
@@ -88,6 +89,8 @@ export async function upsertUserFromFirebase(
 
     return row;
   });
+
+  await ensureAnnouncementsOwner(user.id);
 
   await setSessionCookie(user);
   return toProfile(user);

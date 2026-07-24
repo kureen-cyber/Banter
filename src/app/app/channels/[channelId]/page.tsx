@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import { ChatPane } from "@/components/chat-pane";
 import { requireUser } from "@/lib/data";
 import {
+  canPostToChannel,
   getChannel,
+  getMemberRole,
   joinChannel,
   listMessages,
 } from "@/lib/local/queries";
@@ -15,10 +17,16 @@ export default async function ChannelPage({ params }: Props) {
   if (!user || !profile) redirect("/login");
 
   const channel = await getChannel(channelId);
-  if (!channel) notFound();
+  if (!channel || channel.archived_at) notFound();
 
   await joinChannel(channelId, user.id);
-  const messages = await listMessages({ channelId });
+  const [messages, postCheck, role] = await Promise.all([
+    listMessages({ channelId }),
+    canPostToChannel(channelId, user.id),
+    getMemberRole(channelId, user.id),
+  ]);
+
+  const canManage = role === "owner" || role === "admin";
 
   return (
     <ChatPane
@@ -27,6 +35,9 @@ export default async function ChannelPage({ params }: Props) {
       title={`# ${channel.name}`}
       subtitle={channel.description ?? undefined}
       initialMessages={messages}
+      canPost={postCheck.ok}
+      canManageChannel={canManage}
+      channelSlug={channel.slug}
     />
   );
 }

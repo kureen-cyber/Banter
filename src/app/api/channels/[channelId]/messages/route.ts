@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/local/auth";
 import {
+  canPostToChannel,
   createMessage,
   getChannel,
   joinChannel,
@@ -16,12 +17,19 @@ export async function GET(_request: Request, { params }: Params) {
   }
   const { channelId } = await params;
   const channel = await getChannel(channelId);
-  if (!channel) {
+  if (!channel || channel.archived_at) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   await joinChannel(channelId, profile.id);
-  const messages = await listMessages({ channelId });
-  return NextResponse.json({ channel, messages });
+  const [messages, postCheck] = await Promise.all([
+    listMessages({ channelId }),
+    canPostToChannel(channelId, profile.id),
+  ]);
+  return NextResponse.json({
+    channel,
+    messages,
+    canPost: postCheck.ok,
+  });
 }
 
 export async function POST(request: Request, { params }: Params) {
@@ -31,7 +39,7 @@ export async function POST(request: Request, { params }: Params) {
   }
   const { channelId } = await params;
   const channel = await getChannel(channelId);
-  if (!channel) {
+  if (!channel || channel.archived_at) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const body = (await request.json()) as {
@@ -41,7 +49,13 @@ export async function POST(request: Request, { params }: Params) {
   if (!body.body?.trim()) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
   }
+
   await joinChannel(channelId, profile.id);
+  const allowed = await canPostToChannel(channelId, profile.id);
+  if (!allowed.ok) {
+    return NextResponse.json({ error: allowed.reason }, { status: 403 });
+  }
+
   const message = await createMessage({
     senderId: profile.id,
     body: body.body,

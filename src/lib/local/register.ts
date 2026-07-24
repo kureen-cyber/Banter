@@ -1,6 +1,7 @@
 import { hashPassword, setSessionCookie } from "@/lib/local/auth";
 import { newId, toProfile, updateDb } from "@/lib/local/db";
 import { normalizeGithubHandle } from "@/lib/github";
+import { ensureAnnouncementsOwner } from "@/lib/local/queries";
 import type { Profile } from "@/lib/local/types";
 
 export async function registerUser(input: {
@@ -45,6 +46,8 @@ export async function registerUser(input: {
     db.users.push(row);
     return row;
   });
+
+  await ensureAnnouncementsOwner(user.id);
 
   await setSessionCookie(user);
   return toProfile(user);

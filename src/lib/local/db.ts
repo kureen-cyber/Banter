@@ -54,6 +54,7 @@ function seed(): Database {
     is_private: false,
     created_by: null,
     created_at: now,
+    archived_at: null,
   }));
 
   return {
@@ -73,6 +74,12 @@ function normalizeDb(db: Database): { db: Database; dirty: boolean } {
   if (!Array.isArray(db.banterlina_messages)) {
     db.banterlina_messages = [];
     dirty = true;
+  }
+  for (const channel of db.channels) {
+    if (channel.archived_at === undefined) {
+      channel.archived_at = null;
+      dirty = true;
+    }
   }
   for (const user of db.users) {
     if (user.firebase_uid === undefined) {
