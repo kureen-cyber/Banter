@@ -9,6 +9,40 @@ const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const LOCAL_DB_PATH = path.join(LOCAL_DATA_DIR, "banter.json");
 const WRITE_RETRIES = 12;
 
+type StoreKind = "gist" | "blob" | "disk";
+
+/** Process-local cache (warm instances). Remote store is the source of truth in production. */
+let memoryDb: Database | null = null;
+let memoryEtag: string | null = null;
+
+function gistConfig() {
+  const id = process.env.BANTER_GIST_ID?.trim();
+  const token = process.env.BANTER_GITHUB_TOKEN?.trim();
+  const filename = process.env.BANTER_GIST_FILENAME?.trim() || "banter.json";
+  if (!id || !token) return null;
+  return { id, token, filename };
+}
+
+function blobToken() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  return typeof token === "string" && token.trim() !== "" ? token.trim() : undefined;
+}
+
+function blobOptions(extra?: Record<string, unknown>) {
+  return {
+    access: "private" as const,
+    ...(blobToken() ? { token: blobToken() } : {}),
+    ...extra,
+  };
+}
+
+function storeKind(): StoreKind {
+  // Prefer GitHub Gist when configured — Blob may be suspended/billing-blocked.
+  if (gistConfig()) return "gist";
+  if (blobToken()) return "blob";
+  return "disk";
+}
+
 function isConcurrentBlobError(err: unknown): boolean {
   return (
     err instanceof BlobPreconditionFailedError ||
@@ -18,26 +52,14 @@ function isConcurrentBlobError(err: unknown): boolean {
   );
 }
 
-async function latestBlobEtag(): Promise<string | null> {
-  try {
-    const meta = await head(BLOB_PATH);
-    return meta?.etag ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Process-local cache (warm instances). Blob is the source of truth in production. */
-let memoryDb: Database | null = null;
-let memoryEtag: string | null = null;
-
-function useBlobStore() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+function isConcurrentGistError(err: unknown): boolean {
+  return /409|422|conflict|sha/i.test(
+    err instanceof Error ? err.message : String(err),
+  );
 }
 
 function seed(): Database {
   const now = new Date().toISOString();
-  // Stable IDs so every serverless instance seeds the same channel set.
   const channels = [
     ["11111111-1111-4111-8111-111111111101", "general", "General", "Cohort-wide conversation"],
     ["11111111-1111-4111-8111-111111111102", "announcements", "Announcements", "Official updates"],
@@ -98,19 +120,112 @@ function normalizeDb(db: Database): { db: Database; dirty: boolean } {
   return { db, dirty };
 }
 
+function githubHeaders(token: string) {
+  return {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "banter-app",
+  };
+}
+
+async function loadFromGist(): Promise<{ db: Database; etag: string | null }> {
+  const cfg = gistConfig();
+  if (!cfg) throw new Error("Gist storage is not configured.");
+
+  const res = await fetch(`https://api.github.com/gists/${cfg.id}`, {
+    headers: githubHeaders(cfg.token),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gist read failed (${res.status}): ${text.slice(0, 160)}`);
+  }
+
+  const payload = (await res.json()) as {
+    files?: Record<
+      string,
+      { content?: string; truncated?: boolean; raw_url?: string }
+    >;
+  };
+  const file = payload.files?.[cfg.filename];
+  if (!file) {
+    const fresh = seed();
+    await persistGist(fresh);
+    return { db: fresh, etag: null };
+  }
+
+  let raw = file.content ?? "";
+  if (file.truncated && file.raw_url) {
+    const rawRes = await fetch(file.raw_url, {
+      headers: githubHeaders(cfg.token),
+      cache: "no-store",
+    });
+    if (!rawRes.ok) {
+      throw new Error(`Gist raw download failed (${rawRes.status}).`);
+    }
+    raw = await rawRes.text();
+  }
+
+  if (!raw.trim()) {
+    const fresh = seed();
+    await persistGist(fresh);
+    return { db: fresh, etag: null };
+  }
+
+  const { db, dirty } = normalizeDb(JSON.parse(raw) as Database);
+  if (dirty) await persistGist(db);
+  return { db, etag: null };
+}
+
+async function persistGist(db: Database) {
+  const cfg = gistConfig();
+  if (!cfg) throw new Error("Gist storage is not configured.");
+  const content = JSON.stringify(db, null, 2);
+  const res = await fetch(`https://api.github.com/gists/${cfg.id}`, {
+    method: "PATCH",
+    headers: {
+      ...githubHeaders(cfg.token),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      files: {
+        [cfg.filename]: { content },
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gist write failed (${res.status}): ${text.slice(0, 160)}`);
+  }
+  memoryDb = db;
+  memoryEtag = null;
+}
+
+async function latestBlobEtag(): Promise<string | null> {
+  try {
+    const meta = await head(BLOB_PATH, blobOptions());
+    return meta?.etag ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function createSeedBlob(): Promise<{ db: Database; etag: string | null }> {
   const fresh = seed();
   try {
-    // Create-only: if another instance wins the race, reload their DB instead of clobbering.
-    const written = await put(BLOB_PATH, JSON.stringify(fresh, null, 2), {
-      access: "private",
-      contentType: "application/json",
-      addRandomSuffix: false,
-      allowOverwrite: false,
-    });
+    const written = await put(
+      BLOB_PATH,
+      JSON.stringify(fresh, null, 2),
+      blobOptions({
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: false,
+      }),
+    );
     return { db: fresh, etag: written.etag };
   } catch {
-    const again = await get(BLOB_PATH, { access: "private", useCache: false });
+    const again = await get(BLOB_PATH, blobOptions({ useCache: false }));
     if (!again || again.statusCode !== 200 || !again.stream) {
       throw new Error("Could not initialize Banter data store.");
     }
@@ -121,10 +236,7 @@ async function createSeedBlob(): Promise<{ db: Database; etag: string | null }> 
 }
 
 async function loadFromBlob(): Promise<{ db: Database; etag: string | null }> {
-  const result = await get(BLOB_PATH, {
-    access: "private",
-    useCache: false,
-  });
+  const result = await get(BLOB_PATH, blobOptions({ useCache: false }));
 
   if (!result || result.statusCode !== 200 || !result.stream) {
     return createSeedBlob();
@@ -136,17 +248,19 @@ async function loadFromBlob(): Promise<{ db: Database; etag: string | null }> {
   if (!dirty) return { db, etag: result.blob.etag };
 
   try {
-    const written = await put(BLOB_PATH, JSON.stringify(db, null, 2), {
-      access: "private",
-      contentType: "application/json",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      ifMatch: result.blob.etag,
-    });
+    const written = await put(
+      BLOB_PATH,
+      JSON.stringify(db, null, 2),
+      blobOptions({
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        ifMatch: result.blob.etag,
+      }),
+    );
     return { db, etag: written.etag };
   } catch (err) {
     if (!isConcurrentBlobError(err)) throw err;
-    // Someone else already wrote — use their version.
     return loadFromBlob();
   }
 }
@@ -170,7 +284,14 @@ async function loadFromDisk(): Promise<Database> {
 async function ensureDb(): Promise<Database> {
   if (memoryDb) return memoryDb;
 
-  if (useBlobStore()) {
+  const kind = storeKind();
+  if (kind === "gist") {
+    const { db, etag } = await loadFromGist();
+    memoryDb = db;
+    memoryEtag = etag;
+    return db;
+  }
+  if (kind === "blob") {
     const { db, etag } = await loadFromBlob();
     memoryDb = db;
     memoryEtag = etag;
@@ -186,13 +307,16 @@ async function ensureDb(): Promise<Database> {
 async function persistBlob(db: Database, etag: string | null) {
   const payload = JSON.stringify(db, null, 2);
   const match = (await latestBlobEtag()) ?? etag;
-  const written = await put(BLOB_PATH, payload, {
-    access: "private",
-    contentType: "application/json",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    ...(match ? { ifMatch: match } : {}),
-  });
+  const written = await put(
+    BLOB_PATH,
+    payload,
+    blobOptions({
+      contentType: "application/json",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      ...(match ? { ifMatch: match } : {}),
+    }),
+  );
   memoryDb = db;
   memoryEtag = written.etag;
 }
@@ -206,8 +330,14 @@ async function persistDisk(db: Database) {
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function readDb(): Promise<Database> {
-  if (useBlobStore()) {
-    // Always refresh from Blob so cold instances see signups from other instances.
+  const kind = storeKind();
+  if (kind === "gist") {
+    const { db, etag } = await loadFromGist();
+    memoryDb = db;
+    memoryEtag = etag;
+    return db;
+  }
+  if (kind === "blob") {
     const { db, etag } = await loadFromBlob();
     memoryDb = db;
     memoryEtag = etag;
@@ -220,7 +350,9 @@ export async function updateDb<T>(mutator: (db: Database) => T): Promise<T> {
   let result!: T;
 
   writeQueue = writeQueue.then(async () => {
-    if (!useBlobStore()) {
+    const kind = storeKind();
+
+    if (kind === "disk") {
       const db = await ensureDb();
       result = mutator(db);
       await persistDisk(db);
@@ -230,15 +362,20 @@ export async function updateDb<T>(mutator: (db: Database) => T): Promise<T> {
     let lastError: unknown;
     for (let attempt = 0; attempt < WRITE_RETRIES; attempt++) {
       try {
-        const { db, etag } = await loadFromBlob();
-        // Deep-ish clone via JSON so failed retries don't keep half-mutated state.
-        const working = JSON.parse(JSON.stringify(db)) as Database;
+        const loaded =
+          kind === "gist" ? await loadFromGist() : await loadFromBlob();
+        const working = JSON.parse(JSON.stringify(loaded.db)) as Database;
         result = mutator(working);
-        await persistBlob(working, etag);
+        if (kind === "gist") await persistGist(working);
+        else await persistBlob(working, loaded.etag);
         return;
       } catch (err) {
         lastError = err;
-        if (isConcurrentBlobError(err) && attempt < WRITE_RETRIES - 1) {
+        const concurrent =
+          kind === "gist"
+            ? isConcurrentGistError(err)
+            : isConcurrentBlobError(err);
+        if (concurrent && attempt < WRITE_RETRIES - 1) {
           memoryDb = null;
           memoryEtag = null;
           await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));

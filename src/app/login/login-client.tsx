@@ -46,7 +46,16 @@ export default function LoginPage() {
         githubHandle: handle || githubHandle || null,
       }),
     });
-    const data = (await res.json()) as { error?: string };
+    const raw = await res.text();
+    let data: { error?: string } = {};
+    try {
+      data = raw ? (JSON.parse(raw) as { error?: string }) : {};
+    } catch {
+      throw new Error(
+        raw.trim().slice(0, 180) ||
+          `PM sign-in failed (HTTP ${res.status}).`,
+      );
+    }
     if (!res.ok) throw new Error(data.error || "PM sign-in failed");
     router.push("/app");
     router.refresh();
@@ -68,7 +77,16 @@ export default function LoginPage() {
           githubHandle: githubHandle || undefined,
         }),
       });
-      const data = (await res.json()) as { error?: string };
+      const raw = await res.text();
+      let data: { error?: string; profile?: unknown } = {};
+      try {
+        data = raw ? (JSON.parse(raw) as { error?: string }) : {};
+      } catch {
+        throw new Error(
+          raw.trim().slice(0, 180) ||
+            `Sign-in failed (HTTP ${res.status}). Please try again.`,
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Could not sign in.");
       router.push("/app");
       router.refresh();
