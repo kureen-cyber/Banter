@@ -1,0 +1,11 @@
+rules_version = '2';
+// Merge into the shared PM Firebase project so Banter can persist cohort data.
+// Firebase Console → Firestore → Rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Banter app state (single JSON document). Tighten before wider production use.
+    match /banter/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

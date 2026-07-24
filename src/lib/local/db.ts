@@ -2,18 +2,38 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
+import {
+  isFirestoreDataConfigured,
+  readBanterStateJson,
+  writeBanterStateJson,
+} from "@/lib/firebase/server-data";
 import type { Database } from "@/lib/local/types";
 
 const BLOB_PATH = "banter/banter.json";
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const LOCAL_DB_PATH = path.join(LOCAL_DATA_DIR, "banter.json");
 const WRITE_RETRIES = 12;
+/** Avoid hammering Gist/Firestore on every 2.5s poll from every open tab. */
+const READ_TTL_MS = 2_000;
 
-type StoreKind = "gist" | "blob" | "disk";
+type StoreKind = "firestore" | "gist" | "blob" | "disk";
 
-/** Process-local cache (warm instances). Remote store is the source of truth in production. */
+/** Process-local cache (warm instances). Remote store is the source of truth. */
 let memoryDb: Database | null = null;
 let memoryEtag: string | null = null;
+let memoryLoadedAt = 0;
+
+function touchMemory(db: Database, etag: string | null = null) {
+  memoryDb = db;
+  memoryEtag = etag;
+  memoryLoadedAt = Date.now();
+}
+
+function cachedDb(): Database | null {
+  if (!memoryDb) return null;
+  if (Date.now() - memoryLoadedAt > READ_TTL_MS) return null;
+  return memoryDb;
+}
 
 function gistConfig() {
   const id = process.env.BANTER_GIST_ID?.trim();
@@ -37,7 +57,8 @@ function blobOptions(extra?: Record<string, unknown>) {
 }
 
 function storeKind(): StoreKind {
-  // Prefer GitHub Gist when configured — Blob may be suspended/billing-blocked.
+  // Prefer Firestore (shared PM Firebase) — avoids Vercel Blob billing and GitHub Gist quotas.
+  if (isFirestoreDataConfigured()) return "firestore";
   if (gistConfig()) return "gist";
   if (blobToken()) return "blob";
   return "disk";
@@ -52,8 +73,8 @@ function isConcurrentBlobError(err: unknown): boolean {
   );
 }
 
-function isConcurrentGistError(err: unknown): boolean {
-  return /409|422|conflict|sha/i.test(
+function isConcurrentRemoteError(err: unknown): boolean {
+  return /409|422|conflict|sha|aborted|unavailable|too many|rate/i.test(
     err instanceof Error ? err.message : String(err),
   );
 }
@@ -129,6 +150,23 @@ function githubHeaders(token: string) {
   };
 }
 
+async function loadFromFirestore(): Promise<{ db: Database; etag: string | null }> {
+  const raw = await readBanterStateJson();
+  if (!raw?.trim()) {
+    const fresh = seed();
+    await writeBanterStateJson(JSON.stringify(fresh));
+    return { db: fresh, etag: null };
+  }
+  const { db, dirty } = normalizeDb(JSON.parse(raw) as Database);
+  if (dirty) await writeBanterStateJson(JSON.stringify(db));
+  return { db, etag: null };
+}
+
+async function persistFirestore(db: Database) {
+  await writeBanterStateJson(JSON.stringify(db));
+  touchMemory(db, null);
+}
+
 async function loadFromGist(): Promise<{ db: Database; etag: string | null }> {
   const cfg = gistConfig();
   if (!cfg) throw new Error("Gist storage is not configured.");
@@ -198,8 +236,7 @@ async function persistGist(db: Database) {
     const text = await res.text();
     throw new Error(`Gist write failed (${res.status}): ${text.slice(0, 160)}`);
   }
-  memoryDb = db;
-  memoryEtag = null;
+  touchMemory(db, null);
 }
 
 async function latestBlobEtag(): Promise<string | null> {
@@ -281,26 +318,37 @@ async function loadFromDisk(): Promise<Database> {
   }
 }
 
+async function loadRemote(
+  kind: Exclude<StoreKind, "disk">,
+): Promise<{ db: Database; etag: string | null }> {
+  if (kind === "firestore") return loadFromFirestore();
+  if (kind === "gist") return loadFromGist();
+  return loadFromBlob();
+}
+
+async function persistRemote(
+  kind: Exclude<StoreKind, "disk">,
+  db: Database,
+  etag: string | null,
+) {
+  if (kind === "firestore") return persistFirestore(db);
+  if (kind === "gist") return persistGist(db);
+  return persistBlob(db, etag);
+}
+
 async function ensureDb(): Promise<Database> {
-  if (memoryDb) return memoryDb;
+  const hit = cachedDb();
+  if (hit) return hit;
 
   const kind = storeKind();
-  if (kind === "gist") {
-    const { db, etag } = await loadFromGist();
-    memoryDb = db;
-    memoryEtag = etag;
-    return db;
-  }
-  if (kind === "blob") {
-    const { db, etag } = await loadFromBlob();
-    memoryDb = db;
-    memoryEtag = etag;
+  if (kind !== "disk") {
+    const { db, etag } = await loadRemote(kind);
+    touchMemory(db, etag);
     return db;
   }
 
   const db = await loadFromDisk();
-  memoryDb = db;
-  memoryEtag = null;
+  touchMemory(db, null);
   return db;
 }
 
@@ -317,33 +365,27 @@ async function persistBlob(db: Database, etag: string | null) {
       ...(match ? { ifMatch: match } : {}),
     }),
   );
-  memoryDb = db;
-  memoryEtag = written.etag;
+  touchMemory(db, written.etag);
 }
 
 async function persistDisk(db: Database) {
   await fs.mkdir(LOCAL_DATA_DIR, { recursive: true });
   await fs.writeFile(LOCAL_DB_PATH, JSON.stringify(db, null, 2), "utf8");
-  memoryDb = db;
+  touchMemory(db, null);
 }
 
 let writeQueue: Promise<void> = Promise.resolve();
 
 export async function readDb(): Promise<Database> {
+  const hit = cachedDb();
+  if (hit) return hit;
+
   const kind = storeKind();
-  if (kind === "gist") {
-    const { db, etag } = await loadFromGist();
-    memoryDb = db;
-    memoryEtag = etag;
-    return db;
-  }
-  if (kind === "blob") {
-    const { db, etag } = await loadFromBlob();
-    memoryDb = db;
-    memoryEtag = etag;
-    return db;
-  }
-  return ensureDb();
+  if (kind === "disk") return ensureDb();
+
+  const { db, etag } = await loadRemote(kind);
+  touchMemory(db, etag);
+  return db;
 }
 
 export async function updateDb<T>(mutator: (db: Database) => T): Promise<T> {
@@ -362,22 +404,23 @@ export async function updateDb<T>(mutator: (db: Database) => T): Promise<T> {
     let lastError: unknown;
     for (let attempt = 0; attempt < WRITE_RETRIES; attempt++) {
       try {
-        const loaded =
-          kind === "gist" ? await loadFromGist() : await loadFromBlob();
+        // Writes always reload fresh so we don't overwrite with a stale TTL cache.
+        memoryLoadedAt = 0;
+        const loaded = await loadRemote(kind);
         const working = JSON.parse(JSON.stringify(loaded.db)) as Database;
         result = mutator(working);
-        if (kind === "gist") await persistGist(working);
-        else await persistBlob(working, loaded.etag);
+        await persistRemote(kind, working, loaded.etag);
         return;
       } catch (err) {
         lastError = err;
         const concurrent =
-          kind === "gist"
-            ? isConcurrentGistError(err)
-            : isConcurrentBlobError(err);
+          kind === "blob"
+            ? isConcurrentBlobError(err)
+            : isConcurrentRemoteError(err);
         if (concurrent && attempt < WRITE_RETRIES - 1) {
           memoryDb = null;
           memoryEtag = null;
+          memoryLoadedAt = 0;
           await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
           continue;
         }
