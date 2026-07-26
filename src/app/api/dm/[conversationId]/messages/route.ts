@@ -33,9 +33,18 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { conversationId } = await params;
-  const membership = await getConversationOther(conversationId, profile.id);
+
+  // One retry: another isolate may still be catching up after startConversation.
+  let membership = await getConversationOther(conversationId, profile.id);
   if (!membership) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await new Promise((r) => setTimeout(r, 150));
+    membership = await getConversationOther(conversationId, profile.id);
+  }
+  if (!membership) {
+    return NextResponse.json(
+      { error: "Conversation not found. Try opening the DM again from search." },
+      { status: 404 },
+    );
   }
   const body = (await request.json()) as {
     body?: string;

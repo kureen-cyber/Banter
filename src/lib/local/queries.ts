@@ -265,27 +265,28 @@ export async function listConversations(
 }
 
 export async function startConversation(userId: string, otherUserId: string) {
-  const db = await readDb();
-  const myIds = new Set(
-    db.conversation_participants
-      .filter((p) => p.user_id === userId)
-      .map((p) => p.conversation_id),
-  );
-  const existing = db.conversation_participants.find(
-    (p) => p.user_id === otherUserId && myIds.has(p.conversation_id),
-  );
-  if (existing) return existing.conversation_id;
+  // Entire create path runs inside updateDb so we never return an id that
+  // another instance can't see yet (stale readDb → DM page/API 404).
+  return updateDb((db) => {
+    const myIds = new Set(
+      db.conversation_participants
+        .filter((p) => p.user_id === userId)
+        .map((p) => p.conversation_id),
+    );
+    const existing = db.conversation_participants.find(
+      (p) => p.user_id === otherUserId && myIds.has(p.conversation_id),
+    );
+    if (existing) return existing.conversation_id;
 
-  const id = newId();
-  const now = new Date().toISOString();
-  await updateDb((d) => {
-    d.conversations.push({ id, created_at: now });
-    d.conversation_participants.push(
+    const id = newId();
+    const now = new Date().toISOString();
+    db.conversations.push({ id, created_at: now });
+    db.conversation_participants.push(
       { conversation_id: id, user_id: userId, last_read_at: now },
       { conversation_id: id, user_id: otherUserId, last_read_at: null },
     );
+    return id;
   });
-  return id;
 }
 
 export async function searchUsers(query: string, excludeUserId: string) {
@@ -506,7 +507,8 @@ export async function getConversationOther(
   conversationId: string,
   userId: string,
 ) {
-  const db = await readDb();
+  // Fresh remote read — critical after startConversation on a different isolate.
+  const db = await readDb({ fresh: true });
   const member = db.conversation_participants.find(
     (p) => p.conversation_id === conversationId && p.user_id === userId,
   );

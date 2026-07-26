@@ -86,11 +86,12 @@ export function Sidebar({
     });
     if (!res.ok) return;
     const data = (await res.json()) as { conversationId: string };
-    router.push(`/app/dm/${data.conversationId}`);
     setSearchOpen(false);
     setQuery("");
     onNavigate?.();
+    // Refresh shell first so sidebar lists the DM, then open it.
     router.refresh();
+    router.push(`/app/dm/${data.conversationId}`);
   }
 
   async function createChannel() {

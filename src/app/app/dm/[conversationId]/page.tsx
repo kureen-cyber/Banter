@@ -14,7 +14,12 @@ export default async function DmPage({ params }: Props) {
   const { user, profile } = await requireUser();
   if (!user || !profile) redirect("/login");
 
-  const membership = await getConversationOther(conversationId, user.id);
+  let membership = await getConversationOther(conversationId, user.id);
+  if (!membership) {
+    // Brief wait + fresh re-read if create just landed on another isolate.
+    await new Promise((r) => setTimeout(r, 200));
+    membership = await getConversationOther(conversationId, user.id);
+  }
   if (!membership) notFound();
 
   await markConversationRead(conversationId, user.id);

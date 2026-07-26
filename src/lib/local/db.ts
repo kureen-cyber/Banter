@@ -13,8 +13,12 @@ const BLOB_PATH = "banter/banter.json";
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
 const LOCAL_DB_PATH = path.join(LOCAL_DATA_DIR, "banter.json");
 const WRITE_RETRIES = 12;
-/** Avoid hammering Gist/Firestore on every 2.5s poll from every open tab. */
-const READ_TTL_MS = 2_000;
+/**
+ * Short process-local TTL to reduce remote churn on polling.
+ * Always bypass with readDb({ fresh: true }) for membership / DM lookups —
+ * a stale cache after startConversation causes production DM 404s on other instances.
+ */
+const READ_TTL_MS = 750;
 
 type StoreKind = "firestore" | "gist" | "blob" | "disk";
 
@@ -376,9 +380,13 @@ async function persistDisk(db: Database) {
 
 let writeQueue: Promise<void> = Promise.resolve();
 
-export async function readDb(): Promise<Database> {
-  const hit = cachedDb();
-  if (hit) return hit;
+export async function readDb(opts?: { fresh?: boolean }): Promise<Database> {
+  if (!opts?.fresh) {
+    const hit = cachedDb();
+    if (hit) return hit;
+  } else {
+    memoryLoadedAt = 0;
+  }
 
   const kind = storeKind();
   if (kind === "disk") return ensureDb();
