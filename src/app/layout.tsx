@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Fraunces, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { SoundProvider } from "@/components/sound-provider";
 import { AmbientBackground } from "@/components/ambient-background";
 import "./globals.css";
 
@@ -40,8 +41,10 @@ export default function RootLayout({
     >
       <body className="relative min-h-full">
         <ThemeProvider>
-          <AmbientBackground />
-          {children}
+          <SoundProvider>
+            <AmbientBackground />
+            {children}
+          </SoundProvider>
         </ThemeProvider>
       </body>
     </html>

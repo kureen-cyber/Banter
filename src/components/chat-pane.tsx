@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { Profile } from "@/lib/types";
 import type { MessageWithSender } from "@/lib/local/queries";
 import { Avatar } from "@/components/avatar";
+import { useSound } from "@/components/sound-provider";
 
 type ChatMessage = MessageWithSender;
 
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export function ChatPane({
+  currentUser,
   channelId,
   conversationId,
   title,
@@ -40,6 +42,7 @@ export function ChatPane({
   channelSlug,
 }: Props) {
   const router = useRouter();
+  const { playMessageTone } = useSound();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [body, setBody] = useState("");
   const [threadBody, setThreadBody] = useState("");
@@ -49,6 +52,8 @@ export function ChatPane({
   const [allowPost, setAllowPost] = useState(canPost);
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const knownIdsRef = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
+  const selfId = currentUser.id;
 
   const endpoint = channelId
     ? `/api/channels/${channelId}/messages`
@@ -61,6 +66,7 @@ export function ChatPane({
   useEffect(() => {
     setMessages(initialMessages);
     setAllowPost(canPost);
+    knownIdsRef.current = new Set(initialMessages.map((m) => m.id));
   }, [initialMessages, canPost]);
 
   useEffect(() => {
@@ -75,6 +81,12 @@ export function ChatPane({
         messages: ChatMessage[];
         canPost?: boolean;
       };
+      const incoming = data.messages.filter(
+        (m) => !knownIdsRef.current.has(m.id) && m.sender_id !== selfId,
+      );
+      for (const m of data.messages) knownIdsRef.current.add(m.id);
+      if (incoming.length > 0) void playMessageTone();
+
       setMessages(data.messages);
       if (typeof data.canPost === "boolean") setAllowPost(data.canPost);
       if (threadRoot) {
@@ -84,7 +96,7 @@ export function ChatPane({
       }
     }, 2500);
     return () => window.clearInterval(id);
-  }, [endpoint, threadRoot]);
+  }, [endpoint, threadRoot, playMessageTone, selfId]);
 
   function openThread(message: ChatMessage) {
     setThreadRoot(message);

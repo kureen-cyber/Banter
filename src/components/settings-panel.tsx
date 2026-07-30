@@ -1,11 +1,53 @@
 "use client";
 
-import { Check, Moon, Palette, Sun } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  Check,
+  Moon,
+  Palette,
+  Play,
+  Sun,
+  Trash2,
+  Upload,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { useSound } from "@/components/sound-provider";
+import { CUSTOM_TONE_ID } from "@/lib/notification-sounds";
 import { cn } from "@/lib/utils";
 
 export function SettingsPanel() {
   const { theme, setTheme, mode, setMode, themes } = useTheme();
+  const {
+    enabled,
+    setEnabled,
+    toneId,
+    setToneId,
+    builtinTones,
+    customMeta,
+    uploadCustomTone,
+    removeCustomTone,
+    previewTone,
+  } = useSound();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function onFileChange(file: File | null) {
+    if (!file) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      await uploadCustomTone(file);
+      await previewTone(CUSTOM_TONE_ID);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -18,7 +60,7 @@ export function SettingsPanel() {
             Settings
           </h1>
           <p className="text-xs text-[var(--muted)]">
-            Appearance, light/dark, and atmosphere
+            Appearance, message tones, and atmosphere
           </p>
         </div>
       </header>
@@ -62,6 +104,166 @@ export function SettingsPanel() {
                 Dark
               </button>
             </div>
+          </section>
+
+          <section>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--ink)]">
+                  Message notification sound
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Play a tone when new messages or notifications arrive. Saved
+                  on this device — including tones uploaded from your phone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnabled(!enabled)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                  enabled
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                    : "border-[var(--border)] text-[var(--muted)]",
+                )}
+                aria-pressed={enabled}
+              >
+                {enabled ? (
+                  <Volume2 className="h-4 w-4" />
+                ) : (
+                  <VolumeX className="h-4 w-4" />
+                )}
+                {enabled ? "On" : "Off"}
+              </button>
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {builtinTones.map((tone) => {
+                const active = toneId === tone.id;
+                return (
+                  <li key={tone.id}>
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 rounded-xl border px-3 py-2.5 transition",
+                        active
+                          ? "border-[var(--accent)] bg-[var(--accent-soft)]/40"
+                          : "border-[var(--border)] bg-[var(--surface)]/40",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setToneId(tone.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="text-sm font-medium text-[var(--ink)]">
+                          {tone.name}
+                          {active && (
+                            <Check className="ml-1.5 inline h-3.5 w-3.5 text-[var(--accent)]" />
+                          )}
+                        </p>
+                        <p className="text-xs text-[var(--muted)]">
+                          {tone.description}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        title="Preview"
+                        onClick={() => void previewTone(tone.id)}
+                        className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--panel)] hover:text-[var(--ink)]"
+                      >
+                        <Play className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+
+              <li>
+                <div
+                  className={cn(
+                    "rounded-xl border px-3 py-3 transition",
+                    toneId === CUSTOM_TONE_ID
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)]/40"
+                      : "border-[var(--border)] bg-[var(--surface)]/40",
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customMeta) setToneId(CUSTOM_TONE_ID);
+                        else fileRef.current?.click();
+                      }}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <p className="text-sm font-medium text-[var(--ink)]">
+                        Custom tone
+                        {toneId === CUSTOM_TONE_ID && (
+                          <Check className="ml-1.5 inline h-3.5 w-3.5 text-[var(--accent)]" />
+                        )}
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {customMeta
+                          ? customMeta.name
+                          : "Upload a song or sound from your phone or computer."}
+                      </p>
+                    </button>
+                    {customMeta && (
+                      <button
+                        type="button"
+                        title="Preview custom tone"
+                        onClick={() => void previewTone(CUSTOM_TONE_ID)}
+                        className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--panel)] hover:text-[var(--ink)]"
+                      >
+                        <Play className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.webm"
+                      className="hidden"
+                      onChange={(e) =>
+                        void onFileChange(e.target.files?.[0] ?? null)
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={uploading}
+                      onClick={() => fileRef.current?.click()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {uploading
+                        ? "Uploading…"
+                        : customMeta
+                          ? "Replace from phone"
+                          : "Upload from phone"}
+                    </button>
+                    {customMeta && (
+                      <button
+                        type="button"
+                        onClick={() => void removeCustomTone()}
+                        className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {uploadError && (
+                    <p className="mt-2 text-xs text-rose-600">{uploadError}</p>
+                  )}
+                  <p className="mt-2 text-[11px] text-[var(--muted)]">
+                    Audio stays on this device (up to 3 MB). On phones, pick a
+                    file from Files / Music.
+                  </p>
+                </div>
+              </li>
+            </ul>
           </section>
 
           <section>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
+import { NotificationSoundWatcher } from "@/components/notification-sound-watcher";
 import type { Channel, Conversation, Profile } from "@/lib/types";
 
 type Props = {
@@ -24,6 +25,7 @@ export function AppShell({
 
   return (
     <div className="relative flex h-screen overflow-hidden">
+      <NotificationSoundWatcher />
       <div
         className={`fixed inset-y-0 left-0 z-40 transition-transform md:static md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
