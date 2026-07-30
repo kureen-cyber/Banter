@@ -1,3 +1,13 @@
 hult-cohort-program-pr98/
+.peer-review-tmp/
+peer-reviews/
+tmp-godwinkamau-review/
+tmp-zukhriddingit-review/
+tmp-*
 tsc-out.txt
+tsc-*.txt
 vercel-deploy.txt
+rally-*.html
+rally-*.js
+teamwrk-*
+signup.html
